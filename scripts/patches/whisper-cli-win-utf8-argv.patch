@@ -33,13 +33,13 @@ index 9a54742..9f27f9c 100644
 +        const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide_argv[i], -1, nullptr, 0, nullptr, nullptr);
 +        if (bytes <= 0) return 1;
 +        std::string arg(bytes, '\0');
-+        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide_argv[i], -1, arg.data(), bytes, nullptr, nullptr) != bytes) return 1;
++        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide_argv[i], -1, &arg[0], bytes, nullptr, nullptr) != bytes) return 1;
 +        arg.pop_back();
 +        utf8_args.push_back(std::move(arg));
 +    }
 +    std::vector<char *> argv;
 +    argv.reserve(utf8_args.size() + 1);
-+    for (auto & arg : utf8_args) argv.push_back(arg.data());
++    for (auto & arg : utf8_args) argv.push_back(&arg[0]);
 +    argv.push_back(nullptr);
 +    return whisper_cli_main(argc, argv.data());
 +}
