@@ -71,6 +71,21 @@ jobs:
           "transcript: $text"
           if ($text -notmatch "what your country can do") { throw "the transcript is not the sample's words" }
 
+      # The clean pt-BR VM crashed with 0xc0000409 only when --model lived under the
+      # accented user profile. The same binary and model ran from C:\battery\voice-ascii.
+      # A runner's ASCII workspace alone misses that regression.
+      - name: Prove Unicode paths with the published model
+        shell: pwsh
+        run: |
+          $exe = "build/whisper-cli-$env:WHISPER_VERSION-windows-x64.exe"
+          $unicodeDir = "build/João Çãõ Silva"
+          New-Item -ItemType Directory -Path $unicodeDir -Force | Out-Null
+          $unicodeModel = Join-Path $unicodeDir 'model.bin'
+          Copy-Item build/model.bin $unicodeModel
+          $text = (& $exe --model $unicodeModel --file build/whisper-cpp/samples/jfk.wav --language en --no-timestamps --no-prints --audio-ctx 614) -join " "
+          if ($LASTEXITCODE -ne 0) { throw "whisper-cli failed with Unicode model path: $LASTEXITCODE" }
+          if ($text -notmatch "what your country can do") { throw "Unicode model path lost transcription: $text" }
+
       - name: Record its digest
         shell: pwsh
         run: |

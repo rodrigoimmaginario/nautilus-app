@@ -26,6 +26,14 @@ set CMAKE=%VS%\Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe
 set NINJA=%VS%\Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe
 set WORK=%~dp0..\build\whisper-cpp
 if not exist "%WORK%\.git" git clone --depth 1 --branch %VERSION% https://github.com/ggml-org/whisper.cpp.git "%WORK%" || exit /b 1
+rem The Windows CRT supplies main() argv in the active ANSI code page, but whisper's model
+rem loader interprets it as UTF-8. Apply our pinned CLI entry-point fix before compiling.
+set PATCH=%~dp0patches\whisper-cli-win-utf8-argv.patch
+git -C "%WORK%" apply --reverse --check "%PATCH%" >nul 2>&1
+if errorlevel 1 (
+  git -C "%WORK%" apply --check "%PATCH%" || exit /b 1
+  git -C "%WORK%" apply "%PATCH%" || exit /b 1
+)
 "%CMAKE%" -S "%WORK%" -B "%WORK%\build-static" -G Ninja -DCMAKE_MAKE_PROGRAM="%NINJA%" -DCMAKE_BUILD_TYPE=Release ^
   -DBUILD_SHARED_LIBS=OFF -DCMAKE_POLICY_DEFAULT_CMP0091=NEW -DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded ^
   -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=ON -DWHISPER_SDL2=OFF ^

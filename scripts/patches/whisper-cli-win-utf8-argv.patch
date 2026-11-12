@@ -1,0 +1,48 @@
+diff --git a/examples/cli/cli.cpp b/examples/cli/cli.cpp
+index 9a54742..9f27f9c 100644
+--- a/examples/cli/cli.cpp
++++ b/examples/cli/cli.cpp
+@@ -918,13 +918,13 @@ static void output_lrc(struct whisper_context * ctx, std::ofstream & fout, const
+ 
+ static void cb_log_disable(enum ggml_log_level , const char * , void * ) { }
+ 
+-int main(int argc, char ** argv) {
++static int whisper_cli_main(int argc, char ** argv) {
+     ggml_backend_load_all();
+ 
+ #if defined(_WIN32)
+-    // Set the console output code page to UTF-8, while command line arguments
+-    // are still encoded in the system's code page. In this way, we can print
+-    // non-ASCII characters to the console, and access files with non-ASCII paths.
++    // The wide entry point below converts all arguments to UTF-8. whisper's model loader
++    // expects UTF-8; the ordinary Windows main() gives it bytes in the active code page.
++    // The console output code page is independent of the argv encoding.
+     SetConsoleOutputCP(CP_UTF8);
+ #endif
+ 
+@@ -1304,3 +1304,25 @@ int main(int argc, char ** argv) {
+ 
+     return 0;
+ }
++
++#ifdef _WIN32
++int wmain(int argc, wchar_t ** wide_argv) {
++    std::vector<std::string> utf8_args;
++    utf8_args.reserve(argc);
++    for (int i = 0; i < argc; ++i) {
++        const int bytes = WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide_argv[i], -1, nullptr, 0, nullptr, nullptr);
++        if (bytes <= 0) return 1;
++        std::string arg(bytes, '\0');
++        if (WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide_argv[i], -1, arg.data(), bytes, nullptr, nullptr) != bytes) return 1;
++        arg.pop_back();
++        utf8_args.push_back(std::move(arg));
++    }
++    std::vector<char *> argv;
++    argv.reserve(utf8_args.size() + 1);
++    for (auto & arg : utf8_args) argv.push_back(arg.data());
++    argv.push_back(nullptr);
++    return whisper_cli_main(argc, argv.data());
++}
++#else
++int main(int argc, char ** argv) { return whisper_cli_main(argc, argv); }
++#endif
