@@ -66,6 +66,20 @@ The signature is made afterwards, by `tauri signer sign`, with the key at `~/.mi
 
 If the workflow failed, fix it on `main` and release the fix in the next version; to rebuild the same tag, run the workflow by hand on it (`gh workflow run windows-release.yml --ref vX.Y.Z`).
 
+## What the installer does before writing its files
+
+The application runs the Mirror host, a second host for learning (a minute after launch, then every ten minutes) and the Pi invocations from one file, `mirror-host\node\node.exe`. An update's installer starts as the application exits, and any of those may not have left yet. The installer cannot write a file that is running: in its default mode it stops at "Error opening file for writing" with Abort, Retry and Ignore, and in the silent mode (`/S`, which the updater's `installMode: "quiet"` uses) it skips the file and says nothing, leaving the previous Node under the new application.
+
+So the installer first ends the Node processes whose executable is this install folder's `node.exe`, and only those (`src-tauri/windows/installer-hooks.nsh`, Tauri's `NSIS_HOOK_PREINSTALL`). Three things in it are deliberate:
+
+- The match is on the full path. Another Node on the machine, or another channel's install, is left alone.
+- The path is read through CIM (`Win32_Process.ExecutablePath`). The installer is a 32-bit process, and a 32-bit PowerShell cannot read the path of a 64-bit process through `Get-Process`: that form matches nothing and reports nothing.
+- PowerShell is started by its full path in the system folder, the install folder reaches it in an environment variable, and the wait for it is bounded at a minute.
+
+It runs before the installer's own check for a running application. On an update the application has already exited; an installer run by hand over an open application ends the hosts first and the application after, and the application could start a host in between.
+
+The step costs the start of PowerShell on every installation: about two seconds on an ordinary machine.
+
 ## Who is offered the update
 
 Every Windows installation of the user channel of a retained version, including those installed before this route existed: they already poll `windows/<version>/latest.json` and carry the public key. Development and evaluation builds do not update.
@@ -77,13 +91,11 @@ Three layers, as in the Mirror installer, from cheapest to most faithful:
 | Layer | What | Where |
 |---|---|---|
 | Tests | `src/tests/windowsRelease.test.mjs`: the route's checks, and `get.ps1` run for real against a local server (the hash check, the refusals, no mark of the web) | every push, on `windows-latest` |
-| Build check | the workflow installs the installer it built, launches it and uninstalls it | the tag |
+| Build check | the workflow installs the installer it built, launches it, runs it again over a Node of the install folder (which it must end, writing `node.exe`, while another Node is left alone) and uninstalls it | the tag, and every push for the development installer |
 | End to end | the installer on a clean profile and on `C:\Users\João Çãõ Silva` (pt-BR): first run, a Mirror home, Pi, a provider, Journeys, turns, uninstall keeping the data; then an update from the previous version through the application's own interface | two Windows 11 machines with those profiles (today, the contributor's lab VMs), before the first publication and when the installer or the updater changes |
 
 ## Not covered here
 
 - **Code signing.** The installer is not signed with a Windows certificate, so a browser download shows the unknown-publisher warning. The updater signature is a different thing: it is what lets an installed application trust an update.
 - **ARM64.** One architecture, x64.
-- **A process still running the bundled Node.** The installer replaces `mirror-host
-ode
-ode.exe`. If something is still running that file when the update's installer reaches it, the installer stops at an Abort / Retry / Ignore dialog, and Retry continues once the process is gone. In the rehearsal the application's own host process had ended by then; nothing in the installer enforces it.
+- **Something else holding the bundled Node.** The installer ends the install folder's own Node processes (see below). A file scanner or any other program holding `mirror-host\node\node.exe` at that moment is not ended: the installer then stops at an Abort / Retry / Ignore dialog in its default mode, and Retry continues once the file is free.
